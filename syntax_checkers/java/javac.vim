@@ -29,6 +29,8 @@ endif
 
 if !exists('g:syntastic_java_maven_executable')
     let g:syntastic_java_maven_executable = 'mvn'
+else
+    let s:has_maven = 1
 endif
 
 if !exists('g:syntastic_java_javac_options')
@@ -80,7 +82,9 @@ if g:syntastic_java_javac_config_file_enabled
 endif
 
 function! SyntaxCheckers_java_javac_IsAvailable() dict " {{{1
-    let s:has_maven = executable(expand(g:syntastic_java_maven_executable, 1))
+    if !s:has_maven
+        let s:has_maven = executable(expand(g:syntastic_java_maven_executable, 1))
+    endif
     return executable(expand(g:syntastic_java_javac_executable, 1))
 endfunction " }}}1
 
@@ -297,9 +301,17 @@ function! s:EditConfig() " {{{2
     endif
 endfunction " }}}2
 
+function! s:GetMavenPomFile()
+    if exists('g:syntastic_java_maven_pom_file')
+        return g:syntastic_java_maven_pom_file
+    else
+        return findfile('pom.xml', '.;')
+    endif
+endfunction
+
 function! s:GetMavenProperties() " {{{2
     let mvn_properties = {}
-    let pom = findfile('pom.xml', '.;')
+    let pom = s:GetMavenPomFile()
     if s:has_maven && filereadable(pom)
         if !has_key(g:syntastic_java_javac_maven_pom_properties, pom)
             let mvn_cmd = syntastic#util#shexpand(g:syntastic_java_maven_executable) .
@@ -334,7 +346,7 @@ function! s:GetMavenProperties() " {{{2
 endfunction " }}}2
 
 function! s:GetMavenClasspath() " {{{2
-    let pom = findfile('pom.xml', '.;')
+    let pom = s:GetMavenPomFile()
     if s:has_maven && filereadable(pom)
         if !has_key(g:syntastic_java_javac_maven_pom_ftime, pom) || g:syntastic_java_javac_maven_pom_ftime[pom] != getftime(pom)
             let mvn_cmd = syntastic#util#shexpand(g:syntastic_java_maven_executable) .
@@ -343,13 +355,20 @@ function! s:GetMavenClasspath() " {{{2
             let mvn_classpath_output = split(syntastic#util#system(mvn_cmd . ' dependency:build-classpath'), "\n")
             let mvn_classpath = ''
             let class_path_next = 0
+            if exists('g:syntastic_java_maven_module')
+                let correct_class_path = 0
+            else
+                let correct_class_path = 1
+            endif
 
             for line in mvn_classpath_output
-                if class_path_next == 1
+                if correct_class_path && class_path_next
                     let mvn_classpath = s:RemoveCarriageReturn(line)
                     break
                 endif
-                if stridx(line, 'Dependencies classpath:') >= 0
+                if !correct_class_path && match(line, 'maven-dependency-plugin:.*:build-classpath.*' . g:syntastic_java_maven_module . ' ---') >= 0
+                    let correct_class_path = 1
+                elseif correct_class_path && stridx(line, 'Dependencies classpath:') >= 0
                     let class_path_next = 1
                 endif
             endfor
@@ -378,7 +397,7 @@ function! s:GetMavenClasspath() " {{{2
 endfunction " }}}2
 
 function! s:MavenOutputDirectory() " {{{2
-    let pom = findfile('pom.xml', '.;')
+    let pom = s:GetMavenPomFile()
     if s:has_maven && filereadable(pom)
         let mvn_properties = s:GetMavenProperties()
         let output_dir = getcwd()
