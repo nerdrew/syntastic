@@ -363,13 +363,20 @@ function! s:GetMavenClasspath() " {{{2
             let mvn_classpath_output = split(syntastic#util#system(mvn_cmd . ' dependency:build-classpath -DincludeScope=test'), "\n")
             let mvn_classpath = ''
             let class_path_next = 0
+            if exists('g:syntastic_java_maven_module')
+                let correct_class_path = 0
+            else
+                let correct_class_path = 1
+            endif
 
             for line in mvn_classpath_output
-                if class_path_next == 1
+                if correct_class_path && class_path_next
                     let mvn_classpath = s:RemoveCarriageReturn(line)
                     break
                 endif
-                if stridx(line, 'Dependencies classpath:') >= 0
+                if !correct_class_path && match(line, 'maven-dependency-plugin:.*:build-classpath.*' . g:syntastic_java_maven_module . ' ---') >= 0
+                    let correct_class_path = 1
+                elseif correct_class_path && stridx(line, 'Dependencies classpath:') >= 0
                     let class_path_next = 1
                 endif
             endfor
